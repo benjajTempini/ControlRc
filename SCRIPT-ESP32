@@ -1,0 +1,163 @@
+#include "BluetoothSerial.h"
+BluetoothSerial SerialBT;
+
+// ================= PINES =================
+// Motor dirección (Motor 1)
+#define DIR_A 18
+#define DIR_B 19
+
+// Motor avance (Motor 2)
+#define MOV_A 21
+#define MOV_B 22
+
+// LED bicolor Bluetooth
+#define LED_ROJO 26
+#define LED_AZUL 25
+
+// Luces
+#define LUCES_TRASERAS 32
+#define LUCES_NEON 14
+
+// ================= ESTADOS =================
+enum MoveState { STOPPED, FORWARD, BACKWARD };
+MoveState moveState = STOPPED;
+
+// LED BT
+unsigned long lastBlinkBT = 0;
+bool rojoState = false;
+
+// Luces traseras
+unsigned long lastBlinkBack = 0;
+bool traserasState = false;
+
+// Neón
+bool neonEncendido = false;
+
+// ================= FUNCIONES MOTOR =================
+void stopMoveMotor() {
+  digitalWrite(MOV_A, LOW);
+  digitalWrite(MOV_B, LOW);
+  moveState = STOPPED;
+}
+
+void forward() {
+  if (moveState == BACKWARD) {
+    stopMoveMotor();
+    delay(50);
+  }
+  digitalWrite(MOV_A, HIGH);
+  digitalWrite(MOV_B, LOW);
+  moveState = FORWARD;
+}
+
+void backward() {
+  if (moveState == FORWARD) {
+    stopMoveMotor();
+    delay(50);
+  }
+  digitalWrite(MOV_A, LOW);
+  digitalWrite(MOV_B, HIGH);
+  moveState = BACKWARD;
+}
+
+// ================= DIRECCIÓN =================
+void turnLeft() {
+  digitalWrite(DIR_A, LOW);
+  digitalWrite(DIR_B, HIGH);
+}
+
+void turnRight() {
+  digitalWrite(DIR_A, HIGH);
+  digitalWrite(DIR_B, LOW);
+}
+
+void stopTurn() {
+  digitalWrite(DIR_A, LOW);
+  digitalWrite(DIR_B, LOW);
+}
+
+// ================= LED BLUETOOTH =================
+void estadoLED_BT() {
+  if (SerialBT.hasClient()) {
+    digitalWrite(LED_ROJO, LOW);
+    digitalWrite(LED_AZUL, HIGH);
+  } else {
+    digitalWrite(LED_AZUL, LOW);
+    unsigned long ahora = millis();
+    if (ahora - lastBlinkBT > 500) {
+      lastBlinkBT = ahora;
+      rojoState = !rojoState;
+      digitalWrite(LED_ROJO, rojoState);
+    }
+  }
+}
+
+// ================= LUCES TRASERAS =================
+void lucesTraseras() {
+  unsigned long ahora = millis();
+
+  if (moveState == STOPPED) {
+    digitalWrite(LUCES_TRASERAS, HIGH);
+  }
+  else if (moveState == FORWARD) {
+    digitalWrite(LUCES_TRASERAS, LOW);
+  }
+  else if (moveState == BACKWARD) {
+    if (ahora - lastBlinkBack > 300) {
+      lastBlinkBack = ahora;
+      traserasState = !traserasState;
+      digitalWrite(LUCES_TRASERAS, traserasState);
+    }
+  }
+}
+
+// ================= SETUP =================
+void setup() {
+  pinMode(DIR_A, OUTPUT);
+  pinMode(DIR_B, OUTPUT);
+  pinMode(MOV_A, OUTPUT);
+  pinMode(MOV_B, OUTPUT);
+
+  pinMode(LED_ROJO, OUTPUT);
+  pinMode(LED_AZUL, OUTPUT);
+
+  pinMode(LUCES_TRASERAS, OUTPUT);
+  pinMode(LUCES_NEON, OUTPUT);
+
+  stopMoveMotor();
+  stopTurn();
+
+  digitalWrite(LUCES_NEON, LOW);
+  digitalWrite(LUCES_TRASERAS, LOW);
+
+  Serial.begin(115200);
+  SerialBT.begin("ESP32-AUTO");
+
+  Serial.println("ESP32 Auto listo");
+}
+
+// ================= LOOP =================
+void loop() {
+  estadoLED_BT();
+  lucesTraseras();
+
+  if (SerialBT.available()) {
+    char c = SerialBT.read();
+
+    switch (c) {
+      case 'F': forward(); break;
+      case 'B': backward(); break;
+      case 'S': stopMoveMotor(); break;
+
+      case 'L': turnLeft(); break;
+      case 'R': turnRight(); break;
+      case 'C': stopTurn(); break;
+
+      // Neón
+      case 'N':
+        neonEncendido = !neonEncendido;
+        digitalWrite(LUCES_NEON, neonEncendido);
+        break;
+    }
+  }
+}
